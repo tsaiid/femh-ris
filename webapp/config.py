@@ -8,6 +8,7 @@ class ProdConfig(Config):
     pass
 class DevConfig(Config):
     DEBUG = True
+    os.environ["NLS_LANG"] = "TRADITIONAL CHINESE_TAIWAN.ZHT16BIG5"
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     #SQLALCHEMY_POOL_SIZE = 20
     #SQLALCHEMY_POOL_TIMEOUT = 5
