@@ -36,15 +36,19 @@ def get_similar_recent_report(accno, db_engine=None):
 
     # get worklist of cxr on the target date
     sql_get_worklist = '''
-SELECT patid, examcode, examname
+SELECT patid, examcode, examname, examdate
 FROM risworklistdatas
 WHERE accno = '{accno}'
     '''.format(accno=accno)
     results = db_engine.execute(sql_get_worklist)
-    examinfo = [{'patid': row['patid'], 'examcode': row['examcode'], 'examname': row['examname']} for row in results]
+    examinfo = [{   'patid': row['patid'],
+                    'examcode': row['examcode'],
+                    'examname': row['examname'],
+                    'examdate': row['examdate']     } for row in results]
     if examinfo:
         debug.append(examinfo)   # log
         examcode = examinfo[0]['examcode']
+        examdate = examinfo[0]['examdate']
         sim_cat_list = sim_cat_map.get(examcode, [])
         if not sim_cat_list:
             info.append('Similar exam category is not defined: {}'.format(examcode))    # log
@@ -68,10 +72,14 @@ SELECT TO_CHAR(examdate, 'yyyy-mm-dd hh24:mi:ss') examdate_str, accno, findings,
         AND w.reportid IS NOT NULL
         AND examcode IN ({exam_similar_list})
         AND accno != '{accno}'
+        AND examdate < '{examdate}'
         AND findings IS NOT NULL
     ORDER BY examdate DESC
     )
-WHERE ROWNUM = 1'''.format(patid=examinfo[0]['patid'], accno=accno, exam_similar_list=exam_similar_list)
+WHERE ROWNUM = 1'''.format( patid=examinfo[0]['patid'],
+                            accno=accno,
+                            exam_similar_list=exam_similar_list,
+                            examdate=examdate   )
         results = db_engine.execute(sql_get_report)
         similar_reports = [{'examdate': row['examdate_str'],
                             'accno': row['accno'],
