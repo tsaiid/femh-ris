@@ -1,0 +1,17 @@
+<!doctype html>
+<title>Plain Film Counts</title>
+{% if counts %}
+<h1>Counts {{ date_str }}</h1>
+  <table>
+    <tr>
+      <th>exam</th>
+      <td>{{ counts['exam'] }}</td>
+    </tr>
+    <tr>
+      <th>images</th>
+      <td>{{ counts['images'] }}</td>
+    </tr>
+  </table>
+{% else %}
+  <h1>Hello, World!</h1>
+{% endif %}
