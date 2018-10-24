@@ -72,7 +72,7 @@ SELECT TO_CHAR(examdate, 'yyyy-mm-dd hh24:mi:ss') examdate_str, accno, findings,
         AND w.reportid IS NOT NULL
         AND examcode IN ({exam_similar_list})
         AND accno != '{accno}'
-        AND examdate < '{examdate}'
+        AND examdate < TO_DATE('{examdate}', 'yyyy-mm-dd hh24:mi:ss')
         AND findings IS NOT NULL
     ORDER BY examdate DESC
     )
