@@ -43,6 +43,7 @@ WHERE
     '''.format(dr_id=dr_id, sql_trunc_mode=sql_trunc_mode)
     results = db_engine.execute(sql_get_counts)
     counts = [{ 'exam':     row['total_exam'],
-                'images':   row['total_image']  } for row in results]
+                'images':   row['total_image'] if row['total_image'] else 0 }
+              for row in results]
     if counts:
         return counts[0]
