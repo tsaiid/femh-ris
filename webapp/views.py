@@ -26,9 +26,15 @@ def get_report(accno):
 @app.route('/plain-film-count/<dr_id>')
 def get_month_plain_film_count(dr_id):
     counts = get_plain_film_counts(dr_id)
-    return render_template('plain-film-counts.html', counts=counts, date_str=date.today().strftime("%Y/%m"))
+    return render_template('plain-film-counts.html',
+                           counts=counts,
+                           date_str=date.today().strftime("%Y/%m"),
+                           dr_id=dr_id)
 
 @app.route('/plain-film-count/<dr_id>/today')
 def get_today_plain_film_count(dr_id):
     counts = get_plain_film_counts(dr_id, mode='today')
-    return render_template('plain-film-counts.html', counts=counts, date_str=date.today().strftime("%Y/%m/%d"))
+    return render_template('plain-film-counts.html',
+                           counts=counts,
+                           date_str=date.today().strftime("%Y/%m/%d"),
+                           dr_id=dr_id)
