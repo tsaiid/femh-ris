@@ -1,0 +1,323 @@
+import yaml
+import os
+import cx_Oracle
+from sqlalchemy import create_engine
+from .datelib import get_month_strs
+import pandas as pd
+
+#os.environ["NLS_LANG"] = "GERMAN_GERMANY.UTF8"
+os.environ["NLS_LANG"] = "TRADITIONAL CHINESE_TAIWAN.AL32UTF8"
+
+def get_monthly_cr_stats(month_str='prev_month', db_engine=None):
+    # load db cfg
+    if not db_engine:
+        db_yml_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'db.yml')
+        with open(db_yml_path, 'r') as ymlfile:
+            cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
+
+        oracle_conn_str = 'oracle+cx_oracle://{username}:{password}@{dsn_str}'
+        dsn_str = cx_Oracle.makedsn(cfg['oracle']['ip'],
+                                    cfg['oracle']['port'],
+                                    cfg['oracle']['service_name']).replace('SID', 'SERVICE_NAME')
+        db_engine = create_engine(
+            oracle_conn_str.format(
+                username=cfg['oracle']['username'],
+                password=cfg['oracle']['password'],
+                dsn_str=dsn_str
+            )
+        )
+
+    # get month
+    (the_month, the_prev_month, the_next_month) = get_month_strs(month_str)
+    # Get total exam and total image count of plain film exam in current month or today
+    sql_get_stats = '''
+SELECT * FROM (
+    SELECT * FROM (
+        SELECT DISTINCT w.machineid,
+            NVL(門, 0) 門,
+            NVL(急, 0) 急,
+            NVL(住, 0) 住,
+            NVL(健, 0) 健,
+            NVL(總量, 0) 總量,
+            NVL(前月總量, 0) 前月總量,
+            ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1) delta,
+            NVL(未RCP, 0) 未RCP,
+            NVL(未Verify, 0) 未Verify
+        FROM risworklistdatas w
+        LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 門
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND orderfrom = 'OPDR'
+                        AND modality = 'CR'
+                        AND machineid IS NOT NULL
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) o
+        ON w.machineid = o.machineid
+        LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 急
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND orderfrom = 'OPDE'
+                        AND modality = 'CR'
+                        AND machineid IS NOT NULL
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) e
+        ON w.machineid = e.machineid
+        LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 住
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND orderfrom = 'IPD'
+                        AND modality = 'CR'
+                        AND machineid IS NOT NULL
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) i
+        ON w.machineid = i.machineid
+        LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 健
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND orderfrom = 'H'
+                        AND modality = 'CR'
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) h
+        ON w.machineid = h.machineid
+        LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 總量
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND modality = 'CR'
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) t
+        ON w.machineid = t.machineid
+        LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 前月總量
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND modality = 'CR'
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) lt
+        ON w.machineid = lt.machineid
+        LEFT JOIN  (SELECT machineid, COUNT(*) AS 未RCP
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND modality = 'CR'
+                        AND datastatus IN ( 'IMAGEDONE', 'SHIFT', 'CHECKIN', 'NEW' )
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) nr
+        ON w.machineid = nr.machineid
+        LEFT JOIN  (SELECT machineid, COUNT(*) AS 未Verify
+                    FROM risworklistdatas
+                    WHERE 1=1
+                        AND modality = 'CR'
+                        AND datastatus = 'RCP'
+                        AND examdate BETWEEN
+                            TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                AND
+                            TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                    GROUP BY machineid) nv
+        ON w.machineid = nv.machineid
+        WHERE 1=1
+            AND modality = 'CR'
+            AND SUBSTR(w.machineid, 1, 2) IN ('CR', 'DR')
+            --AND machineid IS NOT NULL
+            AND examdate BETWEEN
+                TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                    AND
+                TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+    )
+
+    UNION ALL
+
+    SELECT * FROM (
+        SELECT '本月' AS machineid, OPDR AS 門, OPDE AS 急, IPD AS 住, H AS 健
+            , TOTAL AS 總量, NULL AS 前月總量, NULL AS delta, NULL AS 未RCP, NULL AS 未Verify
+        FROM (
+            SELECT * FROM
+            (
+                SELECT DISTINCT w.orderfrom,
+                    NVL(總量, 0) 總量
+                FROM risworklistdatas w
+                LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 總量
+                            FROM risworklistdatas
+                            WHERE 1=1
+                                AND modality = 'CR'
+                                AND orderfrom IS NOT NULL
+                                AND examdate BETWEEN
+                                    TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                        AND
+                                    TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                            GROUP BY orderfrom) t
+                ON w.orderfrom = t.orderfrom
+                WHERE 1=1
+                    AND modality = 'CR'
+                    AND w.orderfrom IS NOT NULL
+                    AND examdate BETWEEN
+                        TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                            AND
+                        TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+
+                UNION
+
+                SELECT 'TOTAL' AS orderfrom, SUM(imagecount) AS 總量
+                FROM risworklistdatas
+                WHERE 1=1
+                    AND modality = 'CR'
+                    AND orderfrom IS NOT NULL
+                    AND examdate BETWEEN
+                        TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                            AND
+                        TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+            )
+            PIVOT
+            (
+              MAX(總量)
+              FOR orderfrom IN ('H' AS H, 'IPD' AS IPD, 'OPDE' AS OPDE, 'OPDR' AS OPDR, 'TOTAL' AS TOTAL)
+            )
+        )
+
+        UNION
+
+        SELECT '上月' AS machineid, OPDR AS 門, OPDE AS 急, IPD AS 住, H AS 健
+            , TOTAL AS 總量, NULL AS 前月總量, NULL AS delta, NULL AS 未RCP, NULL AS 未Verify
+        FROM (
+            SELECT * FROM
+            (
+                SELECT DISTINCT w.orderfrom,
+                    NVL(前月總量, 0) 前月總量
+                FROM risworklistdatas w
+                LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 前月總量
+                            FROM risworklistdatas
+                            WHERE 1=1
+                                AND modality = 'CR'
+                                AND orderfrom IS NOT NULL
+                                AND examdate BETWEEN
+                                    TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
+                                        AND
+                                    TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                            GROUP BY orderfrom) lt
+                ON w.orderfrom = lt.orderfrom
+                WHERE 1=1
+                    AND modality = 'CR'
+                    AND w.orderfrom IS NOT NULL
+                    AND examdate BETWEEN
+                        TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                            AND
+                        TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+
+                UNION
+
+                SELECT 'TOTAL' AS orderfrom, SUM(imagecount) AS 前月總量
+                FROM risworklistdatas
+                WHERE 1=1
+                    AND modality = 'CR'
+                    AND orderfrom IS NOT NULL
+                    AND examdate BETWEEN
+                        TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
+                            AND
+                        TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+            )
+            PIVOT
+            (
+              MAX(前月總量)
+              FOR orderfrom IN ('H' AS H, 'IPD' AS IPD, 'OPDE' AS OPDE, 'OPDR' AS OPDR, 'TOTAL' AS TOTAL)
+            )
+        )
+
+        UNION
+
+        SELECT 'DELTA' AS machineid, OPDR AS 門, OPDE AS 急, IPD AS 住, H AS 健
+            , TOTAL AS 總量, NULL AS 前月總量, NULL AS delta, NULL AS 未RCP, NULL AS 未Verify
+        FROM (
+            SELECT * FROM
+            (
+                SELECT DISTINCT w.orderfrom,
+                    --NVL(總量, 0) 總量,
+                    --NVL(前月總量, 0) 前月總量,
+                    ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1) delta
+                FROM risworklistdatas w
+                LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 總量
+                            FROM risworklistdatas
+                            WHERE 1=1
+                                AND modality = 'CR'
+                                AND orderfrom IS NOT NULL
+                                AND examdate BETWEEN
+                                    TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                        AND
+                                    TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+                            GROUP BY orderfrom) t
+                ON w.orderfrom = t.orderfrom
+                LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 前月總量
+                            FROM risworklistdatas
+                            WHERE 1=1
+                                AND modality = 'CR'
+                                AND orderfrom IS NOT NULL
+                                AND examdate BETWEEN
+                                    TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
+                                        AND
+                                    TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                            GROUP BY orderfrom) lt
+                ON w.orderfrom = lt.orderfrom
+                WHERE 1=1
+                    AND modality = 'CR'
+                    AND w.orderfrom IS NOT NULL
+                    AND examdate BETWEEN
+                        TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                            AND
+                        TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
+
+                UNION
+
+                SELECT 'TOTAL' AS orderfrom, ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1) AS delta
+                FROM (  SELECT SUM(imagecount) AS 總量
+                        FROM risworklistdatas
+                        WHERE 1=1
+                            AND modality = 'CR'
+                            AND orderfrom IS NOT NULL
+                            AND examdate BETWEEN
+                                TO_DATE( '{the_month}', 'yyyy-mm-dd' )
+                                    AND
+                                TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )   ),
+                     (  SELECT SUM(imagecount) AS 前月總量
+                        FROM risworklistdatas
+                        WHERE 1=1
+                            AND modality = 'CR'
+                            AND orderfrom IS NOT NULL
+                            AND examdate BETWEEN
+                                TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
+                                    AND
+                                TO_DATE( '{the_month}', 'yyyy-mm-dd' )   )
+            )
+            PIVOT
+            (
+              MAX(delta)
+              FOR orderfrom IN ('H' AS H, 'IPD' AS IPD, 'OPDE' AS OPDE, 'OPDR' AS OPDR, 'TOTAL' AS TOTAL)
+            )
+        )
+    )
+)
+ORDER BY CASE
+            WHEN SUBSTR(machineid, 1, 2) = 'DR' THEN TO_NUMBER(SUBSTR(machineid, 3))
+            WHEN SUBSTR(machineid, 1, 2) = 'CR' THEN 200
+            END
+         , machineid DESC
+    '''.format(the_month=the_month, the_prev_month=the_prev_month, the_next_month=the_next_month)
+    df = pd.read_sql_query(sql_get_stats, db_engine)
+    #print(df.to_string())
+    return df

@@ -5,6 +5,7 @@ from flask import jsonify, request, render_template
 #from flask_cors import cross_origin
 from reports import get_similar_recent_report
 from reports import get_plain_film_counts
+from stats import get_monthly_cr_stats
 from datetime import date
 
 @app.route('/')
@@ -38,3 +39,17 @@ def get_today_plain_film_count(dr_id):
                            counts=counts,
                            date_str=date.today().strftime("%Y/%m/%d"),
                            dr_id=dr_id)
+
+@app.route('/stats/monthly/cr/<month_str>')
+def get_cr_stats(month_str):
+    df = get_monthly_cr_stats(month_str)
+    stat_title = "{} CR Monthly Stats".format(month_str)
+    return render_template('monthly_cr_stats.html',
+                           title=stat_title,
+                           table=df.to_html(classes="table table-hover table-sm",
+                                            border=0,
+                                            justify="left",
+                                            na_rep="None",
+                                            index=False,
+                                            escape=False))
+
