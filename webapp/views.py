@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from webapp import app
-from flask import jsonify, request, render_template
+from flask import jsonify, request, render_template, url_for
 #from flask_cors import cross_origin
 from reports import get_similar_recent_report
 from reports import get_plain_film_counts
@@ -40,9 +40,13 @@ def get_today_plain_film_count(dr_id):
                            date_str=date.today().strftime("%Y/%m/%d"),
                            dr_id=dr_id)
 
+from stats.datelib import get_month_strs
 @app.route('/stats/monthly/cr/<month_str>')
 def get_cr_stats(month_str):
     dfs = get_monthly_cr_stats(month_str)
+    (_, the_prev_month, the_next_month) = get_month_strs(month_str, only_month=True)
+    prev_link = url_for('get_cr_stats', month_str=the_prev_month)
+    next_link = url_for('get_cr_stats', month_str=the_next_month)
     tables = list(map(lambda x: x.to_html(classes="table table-hover table-sm",
                                             border=0,
                                             justify="left",
@@ -52,5 +56,6 @@ def get_cr_stats(month_str):
     stat_title = "{} CR Monthly Stats".format(month_str)
     return render_template('monthly_cr_stats.html',
                            title=stat_title,
+                           prev_link=prev_link, next_link=next_link,
                            table=' '.join(tables))
 
