@@ -42,14 +42,15 @@ def get_today_plain_film_count(dr_id):
 
 @app.route('/stats/monthly/cr/<month_str>')
 def get_cr_stats(month_str):
-    df = get_monthly_cr_stats(month_str)
-    stat_title = "{} CR Monthly Stats".format(month_str)
-    return render_template('monthly_cr_stats.html',
-                           title=stat_title,
-                           table=df.to_html(classes="table table-hover table-sm",
+    dfs = get_monthly_cr_stats(month_str)
+    tables = list(map(lambda x: x.to_html(classes="table table-hover table-sm",
                                             border=0,
                                             justify="left",
                                             na_rep="None",
                                             index=False,
-                                            escape=False))
+                                            escape=False), dfs))
+    stat_title = "{} CR Monthly Stats".format(month_str)
+    return render_template('monthly_cr_stats.html',
+                           title=stat_title,
+                           table=' '.join(tables))
 
