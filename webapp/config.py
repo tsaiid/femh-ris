@@ -18,7 +18,7 @@ class DevConfig(Config):
     # load cfg
     yml_path = os.path.join(os.path.dirname(__file__), '..', 'config', 'db.yml')
     with open(yml_path, 'r') as ymlfile:
-        _cfg = yaml.load(ymlfile)
+        _cfg = yaml.load(ymlfile, Loader=yaml.FullLoader)
 
     oracle_conn_str = 'oracle+cx_oracle://{username}:{password}@{dsn_str}'
     dsn_str = cx_Oracle.makedsn(_cfg['oracle']['ip'],
