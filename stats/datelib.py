@@ -10,7 +10,7 @@ def get_first_day_of_month(text):
         pass
     raise ValueError('no valid date format found')
 
-def get_month_strs(base_month_str):
+def get_month_strs(base_month_str, only_month=False):
     try:
         the_month = get_first_day_of_month(base_month_str)
     except ValueError:
@@ -18,9 +18,12 @@ def get_month_strs(base_month_str):
             raise ValueError('no valid date format found')
         the_month = pytz.timezone('Asia/Taipei').localize(datetime.datetime.today().replace(day=1))
 
-    the_month_str = the_month.strftime('%Y-%m-%d')
+    date_fmt = '%Y-%m' if only_month else '%Y-%m-%d'
+
+    the_month_str = the_month.strftime(date_fmt)
     the_next_month = the_month + relativedelta(months=1)
-    the_next_month_str = the_next_month.strftime('%Y-%m-%d')
+    the_next_month_str = the_next_month.strftime(date_fmt)
     the_prev_month = (the_month - datetime.timedelta(days=1)).replace(day=1)
-    the_prev_month_str = the_prev_month.strftime('%Y-%m-%d')
+    the_prev_month_str = the_prev_month.strftime(date_fmt)
     return (the_month_str, the_prev_month_str, the_next_month_str)
+
