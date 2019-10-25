@@ -38,15 +38,19 @@ SELECT DISTINCT w.machineid,
     NVL(健, 0) 健,
     NVL(總量, 0) 總量,
     NVL(前月總量, 0) 前月總量,
-    ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1) delta,
+    CASE
+        WHEN NVL(前月總量, 0) > 0 THEN ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1)
+        ELSE -99999
+    END delta,
     NVL(未RCP, 0) 未RCP,
     NVL(未Verify, 0) 未Verify
 FROM risworklistdatas w
-LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 門
+LEFT JOIN  (SELECT machineid, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 門
             FROM risworklistdatas
             WHERE 1=1
                 AND orderfrom = 'OPDR'
                 AND modality = 'CR'
+                AND examname NOT IN ('IVP', '虛擬醫令')
                 AND machineid IS NOT NULL
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
@@ -54,11 +58,12 @@ LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 門
                     TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
             GROUP BY machineid) o
 ON w.machineid = o.machineid
-LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 急
+LEFT JOIN  (SELECT machineid, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 急
             FROM risworklistdatas
             WHERE 1=1
                 AND orderfrom = 'OPDE'
                 AND modality = 'CR'
+                AND examname NOT IN ('IVP', '虛擬醫令')
                 AND machineid IS NOT NULL
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
@@ -66,11 +71,12 @@ LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 急
                     TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
             GROUP BY machineid) e
 ON w.machineid = e.machineid
-LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 住
+LEFT JOIN  (SELECT machineid, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 住
             FROM risworklistdatas
             WHERE 1=1
                 AND orderfrom = 'IPD'
                 AND modality = 'CR'
+                AND examname NOT IN ('IVP', '虛擬醫令')
                 AND machineid IS NOT NULL
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
@@ -78,31 +84,36 @@ LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 住
                     TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
             GROUP BY machineid) i
 ON w.machineid = i.machineid
-LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 健
+LEFT JOIN  (SELECT machineid, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 健
             FROM risworklistdatas
             WHERE 1=1
                 AND orderfrom = 'H'
                 AND modality = 'CR'
+                AND examname NOT IN ('IVP', '虛擬醫令')
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
                         AND
                     TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
             GROUP BY machineid) h
 ON w.machineid = h.machineid
-LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 總量
+LEFT JOIN  (SELECT machineid, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 總量
             FROM risworklistdatas
             WHERE 1=1
                 AND modality = 'CR'
+                AND examname NOT IN ('IVP', '虛擬醫令')
+                AND orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
                         AND
                     TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
             GROUP BY machineid) t
 ON w.machineid = t.machineid
-LEFT JOIN  (SELECT machineid, SUM(imagecount) AS 前月總量
+LEFT JOIN  (SELECT machineid, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 前月總量
             FROM risworklistdatas
             WHERE 1=1
                 AND modality = 'CR'
+                AND examname NOT IN ('IVP', '虛擬醫令')
+                AND orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
                 AND examdate BETWEEN
                     TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
                         AND
@@ -114,6 +125,8 @@ LEFT JOIN  (SELECT machineid, COUNT(*) AS 未RCP
             WHERE 1=1
                 AND modality = 'CR'
                 AND datastatus IN ( 'IMAGEDONE', 'SHIFT', 'CHECKIN', 'NEW' )
+                AND examname NOT IN ('IVP', '虛擬醫令')
+                AND orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
                         AND
@@ -125,6 +138,9 @@ LEFT JOIN  (SELECT machineid, COUNT(*) AS 未Verify
             WHERE 1=1
                 AND modality = 'CR'
                 AND datastatus = 'RCP'
+                AND imagecount > 0
+                AND examname NOT IN ('IVP', '虛擬醫令')
+                AND orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
                         AND
@@ -153,24 +169,31 @@ FROM (
 SELECT DISTINCT w.orderfrom,
     NVL(總量, 0) 總量,
     NVL(前月總量, 0) 前月總量,
-    ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1) delta
+    CASE
+        WHEN NVL(前月總量, 0) > 0 THEN ROUND(100 * (NVL(總量, 0) - NVL(前月總量, 0)) / NVL(前月總量, 0), 1)
+        ELSE -99999
+    END delta
 FROM risworklistdatas w
-LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 總量
+LEFT JOIN  (SELECT orderfrom, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 總量
             FROM risworklistdatas
             WHERE 1=1
                 AND modality = 'CR'
-                AND orderfrom IS NOT NULL
+                AND SUBSTR(machineid, 1, 2) IN ('CR', 'DR')
+                AND orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
+                AND examname NOT IN ('IVP', '虛擬醫令')
                 AND examdate BETWEEN
                     TO_DATE( '{the_month}', 'yyyy-mm-dd' )
                         AND
                     TO_DATE( '{the_next_month}', 'yyyy-mm-dd' )
             GROUP BY orderfrom) t
 ON w.orderfrom = t.orderfrom
-LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 前月總量
+LEFT JOIN  (SELECT orderfrom, SUM(CASE WHEN examname = 'Chest AP (Portable)' THEN 1 ELSE imagecount END) AS 前月總量
             FROM risworklistdatas
             WHERE 1=1
                 AND modality = 'CR'
-                AND orderfrom IS NOT NULL
+                AND SUBSTR(machineid, 1, 2) IN ('CR', 'DR')
+                AND orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
+                AND examname NOT IN ('IVP', '虛擬醫令')
                 AND examdate BETWEEN
                     TO_DATE( '{the_prev_month}', 'yyyy-mm-dd' )
                         AND
@@ -179,7 +202,9 @@ LEFT JOIN  (SELECT orderfrom, SUM(imagecount) AS 前月總量
 ON w.orderfrom = lt.orderfrom
 WHERE 1=1
     AND modality = 'CR'
-    AND w.orderfrom IS NOT NULL
+    AND SUBSTR(w.machineid, 1, 2) IN ('CR', 'DR')
+    AND w.orderfrom IN ('OPDR', 'OPDE', 'IPD', 'H')
+    AND w.examname NOT IN ('IVP', '虛擬醫令')
     AND examdate BETWEEN
         TO_DATE( '{the_month}', 'yyyy-mm-dd' )
             AND
